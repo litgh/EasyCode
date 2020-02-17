@@ -3,6 +3,8 @@ package com.sjhy.plugin.tool;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.intellij.database.psi.DbColumn;
+import com.intellij.database.util.DasUtil;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ReflectionUtil;
 import com.sjhy.plugin.entity.DebugField;
@@ -318,5 +320,9 @@ public class GlobalTool extends NameUtils {
         } catch (IOException | ClassNotFoundException e) {
             return null;
         }
+    }
+
+    public boolean isIndexColumn(DbColumn column) {
+        return DasUtil.isIndexColumn(column);
     }
 }

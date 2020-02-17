@@ -29,6 +29,8 @@ import java.awt.event.ActionEvent;
 import java.io.IOException;
 import java.util.*;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 主设置面板
@@ -66,6 +68,10 @@ public class MainSetting implements Configurable, Configurable.Composite {
      * 当前版本号
      */
     private JLabel versionLabel;
+    /**
+     * 配置服务器
+     */
+    private JTextField configServerTextField;
 
     /**
      * 重置列表
@@ -86,6 +92,8 @@ public class MainSetting implements Configurable, Configurable.Composite {
      * 设置对象
      */
     private Settings settings = Settings.getInstance();
+
+    private Pattern tokenPattern = Pattern.compile("(?<token>\\w{32})");
 
     /**
      * 默认构造方法
@@ -235,8 +243,12 @@ public class MainSetting implements Configurable, Configurable.Composite {
                         // 提取token
                         String token = "error";
                         if (result.contains("token")) {
-                            int startLocation = result.indexOf("token") + 6;
-                            token = result.substring(startLocation, result.indexOf("，", startLocation));
+//                            int startLocation = result.indexOf("token") + 6;
+//                            token = result.substring(startLocation, result.indexOf("，", startLocation));
+                            Matcher m = tokenPattern.matcher(result);
+                            if (m.find()) {
+                                token = m.group("token");
+                            }
                         }
                         // 显示token
                         Messages.showInputDialog(project, result, MsgValue.TITLE_INFO, AllIcons.General.InformationDialog, token, new NonEmptyInputValidator());
@@ -307,6 +319,7 @@ public class MainSetting implements Configurable, Configurable.Composite {
         versionLabel.setText(settings.getVersion());
         authorTextField.setText(settings.getAuthor());
         encodeComboBox.setSelectedItem(settings.getEncode());
+        configServerTextField.setText(HttpUtils.HOST_URL);
     }
 
     /**
@@ -369,7 +382,8 @@ public class MainSetting implements Configurable, Configurable.Composite {
      */
     @Override
     public boolean isModified() {
-        return !settings.getEncode().equals(encodeComboBox.getSelectedItem()) || !settings.getAuthor().equals(authorTextField.getText());
+        return !settings.getEncode().equals(encodeComboBox.getSelectedItem()) || !settings.getAuthor().equals(authorTextField.getText())
+                || !HttpUtils.HOST_URL.equals(configServerTextField.getText());
     }
 
     /**
@@ -380,6 +394,7 @@ public class MainSetting implements Configurable, Configurable.Composite {
         //保存数据
         settings.setAuthor(authorTextField.getText());
         settings.setEncode((String) encodeComboBox.getSelectedItem());
+        HttpUtils.HOST_URL = configServerTextField.getText();
     }
 
     /**
@@ -388,5 +403,9 @@ public class MainSetting implements Configurable, Configurable.Composite {
     @Override
     public void reset() {
         init();
+    }
+
+    private void createUIComponents() {
+        // TODO: place custom component creation code here
     }
 }

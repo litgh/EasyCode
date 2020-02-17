@@ -99,7 +99,7 @@ public class Settings implements PersistentStateComponent<Settings> {
      */
     public void initDefault() {
         // 版本号
-        this.version = "1.2.0";
+        this.version = "1.2.2";
         // 默认编码
         this.encode = "UTF-8";
         // 作者名称
