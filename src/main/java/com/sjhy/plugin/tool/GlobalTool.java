@@ -322,7 +322,20 @@ public class GlobalTool extends NameUtils {
         }
     }
 
+    /**
+     * 字段是否为索引字段
+     * @param column
+     * @return
+     */
     public boolean isIndexColumn(DbColumn column) {
         return DasUtil.isIndexColumn(column);
+    }
+
+    /**
+     * 生成UUID
+     * @return
+     */
+    public String uuid() {
+        return UUID.randomUUID().toString();
     }
 }

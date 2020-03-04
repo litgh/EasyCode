@@ -23,6 +23,12 @@
         #set($jdbcType="OTHER")
     #end
     $tool.call($column.ext.put("jdbcType", $jdbcType))
+    #if($column.name.startsWith("is"))
+        $column.setName($tool.firstLowerCase($column.name.substring(2)))
+    #end
+    #if($column.ext.logicDelete)
+        #set($logicDelete = $column)
+    #end
 #end
 
 ##定义宏，查询所有列

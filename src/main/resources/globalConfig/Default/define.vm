@@ -1,5 +1,11 @@
 ##（Velocity宏定义）
 
+#foreach($column in $tableInfo.fullColumn)
+    #if($column.name.startsWith("is"))
+        $column.setName($tool.firstLowerCase($column.name.substring(2)))
+    #end
+#end
+
 ##定义设置表名后缀的宏定义，调用方式：#setTableSuffix("Test")
 #macro(setTableSuffix $suffix)
     #set($tableName = $!tool.append($tableInfo.name, $suffix))

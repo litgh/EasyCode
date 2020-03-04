@@ -1,5 +1,6 @@
 package com.sjhy.plugin.tool;
 
+import com.google.common.base.CaseFormat;
 import org.apache.commons.lang3.ArrayUtils;
 
 import java.util.regex.Matcher;
@@ -58,6 +59,15 @@ public class NameUtils {
      */
     public String firstLowerCase(String name) {
         return StringUtils.uncapitalize(name);
+    }
+
+    /**
+     * 下划线转中划线
+     * @param name
+     * @return
+     */
+    public String underScoreToHyphen(String name) {
+        return CaseFormat.LOWER_UNDERSCORE.to(CaseFormat.LOWER_HYPHEN, name.toLowerCase());
     }
 
     /**
