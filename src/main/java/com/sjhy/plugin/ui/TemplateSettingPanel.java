@@ -1,12 +1,12 @@
 package com.sjhy.plugin.ui;
 
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.intellij.database.model.DasNamespace;
 import com.intellij.database.model.DasObject;
 import com.intellij.database.model.DasTable;
 import com.intellij.database.psi.DbDataSource;
 import com.intellij.database.psi.DbPsiFacade;
 import com.intellij.database.psi.DbTable;
-import com.intellij.database.util.DasUtil;
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.fileTemplates.FileTemplateManager;
 import com.intellij.ide.fileTemplates.impl.UrlUtil;
@@ -21,10 +21,10 @@ import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.ComboBox;
 import com.intellij.openapi.ui.DialogBuilder;
 import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.Conditions;
 import com.intellij.psi.PsiDocumentManager;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiFileFactory;
@@ -32,6 +32,7 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.CollectionComboBoxModel;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.ReflectionUtil;
+import com.intellij.util.containers.JBIterable;
 import com.sjhy.plugin.config.Settings;
 import com.sjhy.plugin.constants.MsgValue;
 import com.sjhy.plugin.entity.TableInfo;
@@ -41,6 +42,7 @@ import com.sjhy.plugin.service.CodeGenerateService;
 import com.sjhy.plugin.service.TableInfoService;
 import com.sjhy.plugin.tool.CloneUtils;
 import com.sjhy.plugin.tool.CollectionUtil;
+import com.sjhy.plugin.tool.ProjectUtils;
 import com.sjhy.plugin.ui.base.BaseGroupPanel;
 import com.sjhy.plugin.ui.base.BaseItemSelectPanel;
 import com.sjhy.plugin.ui.base.TemplateEditor;
@@ -117,11 +119,8 @@ public class TemplateSettingPanel implements Configurable {
     private Project project;
 
     TemplateSettingPanel() {
-        // 存在打开的项目则使用打开的项目，否则使用默认项目
-        ProjectManager projectManager = ProjectManager.getInstance();
-        Project[] openProjects = projectManager.getOpenProjects();
         // 项目对象
-        this.project = openProjects.length > 0 ? openProjects[0] : projectManager.getDefaultProject();
+        this.project = ProjectUtils.getCurrProject();
         // 配置服务实例化
         this.settings = Settings.getInstance();
         // 克隆对象
@@ -150,6 +149,8 @@ public class TemplateSettingPanel implements Configurable {
     public JComponent createComponent() {
         // 创建主面板
         JPanel mainPanel = new JPanel(new BorderLayout());
+
+        this.currGroupName = findExistedGroupName(this.currGroupName);
 
         // 实例化分组面板
         this.baseGroupPanel = new BaseGroupPanel(new ArrayList<>(group.keySet()), this.currGroupName) {
@@ -255,6 +256,29 @@ public class TemplateSettingPanel implements Configurable {
     }
 
     /**
+     * 获取存在的分组名
+     *
+     * @param groupName 分组名
+     * @return 存在的分组名
+     */
+    private String findExistedGroupName(String groupName) {
+        //如果groupName不存在
+        if (!group.containsKey(groupName)) {
+            if (group.containsKey(Settings.DEFAULT_NAME)) {//尝试使用默认分组
+                return Settings.DEFAULT_NAME;
+            } else {
+                //获取第一个分组
+                return group.keySet().stream().findFirst().orElse(Settings.DEFAULT_NAME);
+            }
+        }
+        return groupName;
+    }
+
+    private JBIterable<DasTable> getTables(DbDataSource dataSource) {
+        return dataSource.getModel().traverser().expandAndSkip(Conditions.instanceOf(DasNamespace.class)).filter(DasTable.class);
+    }
+
+    /**
      * 添加调试面板
      */
     private void addDebugPanel() {
@@ -266,14 +290,14 @@ public class TemplateSettingPanel implements Configurable {
         List<String> tableList = new ArrayList<>();
         List<DbDataSource> dataSourceList = DbPsiFacade.getInstance(project).getDataSources();
         if (!CollectionUtil.isEmpty(dataSourceList)) {
-            dataSourceList.forEach(dbDataSource -> DasUtil.getTables(dbDataSource).forEach(table -> tableList.add(table.toString())));
+            dataSourceList.forEach(dbDataSource -> getTables(dbDataSource).forEach(table -> tableList.add(table.toString())));
         }
         ComboBoxModel<String> comboBoxModel = new CollectionComboBoxModel<>(tableList);
         ComboBox<String> comboBox = new ComboBox<>(comboBoxModel);
         panel.add(comboBox);
 
         // 调试动作按钮
-        DefaultActionGroup actionGroup = new DefaultActionGroup(new AnAction(AllIcons.Debugger.ToolConsole) {
+        DefaultActionGroup actionGroup = new DefaultActionGroup(new AnAction(AllIcons.Debugger.Console) {
             @Override
             public void actionPerformed(AnActionEvent e) {
                 // 获取选中的表
@@ -282,7 +306,7 @@ public class TemplateSettingPanel implements Configurable {
                 DasTable dasTable = null;
                 if (!CollectionUtil.isEmpty(dataSourceList)) {
                     for (DbDataSource dbDataSource : dataSourceList) {
-                        for (DasTable table : DasUtil.getTables(dbDataSource)) {
+                        for (DasTable table : getTables(dbDataSource)) {
                             if (Objects.equals(table.toString(), name)) {
                                 dasTable = table;
                             }
@@ -414,6 +438,7 @@ public class TemplateSettingPanel implements Configurable {
         // 防止对象篡改，需要进行克隆
         this.group = CloneUtils.cloneByJson(settings.getTemplateGroupMap(), new TypeReference<Map<String, TemplateGroup>>() {});
         this.currGroupName = settings.getCurrTemplateGroupName();
+        this.currGroupName = findExistedGroupName(settings.getCurrTemplateGroupName());
         if (baseGroupPanel == null) {
             return;
         }
