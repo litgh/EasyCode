@@ -7,7 +7,6 @@ import com.intellij.openapi.options.Configurable;
 import com.intellij.openapi.options.ConfigurationException;
 import com.intellij.openapi.options.UnnamedConfigurable;
 import com.intellij.openapi.project.Project;
-import com.intellij.openapi.project.ProjectManager;
 import com.intellij.openapi.ui.*;
 import com.intellij.openapi.ui.ex.MultiLineLabel;
 import com.intellij.util.ExceptionUtil;
@@ -17,6 +16,7 @@ import com.sjhy.plugin.constants.StrState;
 import com.sjhy.plugin.entity.*;
 import com.sjhy.plugin.tool.CollectionUtil;
 import com.sjhy.plugin.tool.HttpUtils;
+import com.sjhy.plugin.tool.ProjectUtils;
 import com.sjhy.plugin.tool.StringUtils;
 import com.sjhy.plugin.ui.base.ListCheckboxPanel;
 import org.jetbrains.annotations.Nls;
@@ -99,8 +99,8 @@ public class MainSetting implements Configurable, Configurable.Composite {
      * 默认构造方法
      */
     public MainSetting() {
-        // 获取默认项目
-        Project project = ProjectManager.getInstance().getDefaultProject();
+        // 获取当前项目
+        Project project = ProjectUtils.getCurrProject();
         init();
 
         //初始化事件
@@ -131,7 +131,7 @@ public class MainSetting implements Configurable, Configurable.Composite {
 
         // 模板导入事件
         importBtn.addActionListener(e -> {
-            String token = Messages.showInputDialog("Token:", MsgValue.TITLE_INFO, AllIcons.General.PasswordLock, "", new InputValidator() {
+            String token = Messages.showInputDialog("Token:", MsgValue.TITLE_INFO, AllIcons.General.Tip, "", new InputValidator() {
                 @Override
                 public boolean checkInput(String inputString) {
                     return !StringUtils.isEmpty(inputString);
