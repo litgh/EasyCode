@@ -25,9 +25,17 @@ public class TableInfo {
      */
     private String name;
     /**
+     * 表名前缀
+     */
+    private String preName;
+    /**
      * 注释
      */
     private String comment;
+    /**
+     * 模板组名称
+     */
+    private String templateGroupName;
     /**
      * 所有列
      */

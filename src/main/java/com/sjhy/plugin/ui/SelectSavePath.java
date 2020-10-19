@@ -1,5 +1,6 @@
 package com.sjhy.plugin.ui;
 
+import com.intellij.ide.util.PackageChooserDialog;
 import com.intellij.openapi.fileChooser.FileChooser;
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory;
 import com.intellij.openapi.module.Module;
@@ -8,6 +9,8 @@ import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.Messages;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ExceptionUtil;
+import com.intellij.psi.PsiPackage;
+import com.sjhy.plugin.config.Settings;
 import com.sjhy.plugin.constants.MsgValue;
 import com.sjhy.plugin.constants.StrState;
 import com.sjhy.plugin.entity.TableInfo;
@@ -15,17 +18,11 @@ import com.sjhy.plugin.entity.Template;
 import com.sjhy.plugin.entity.TemplateGroup;
 import com.sjhy.plugin.service.CodeGenerateService;
 import com.sjhy.plugin.service.TableInfoService;
-import com.sjhy.plugin.tool.CacheDataUtils;
-import com.sjhy.plugin.tool.CurrGroupUtils;
-import com.sjhy.plugin.tool.ModuleUtils;
-import com.sjhy.plugin.tool.StringUtils;
+import com.sjhy.plugin.tool.*;
 
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.*;
-import java.lang.reflect.Constructor;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.LinkedList;
 import java.util.List;
@@ -63,6 +60,10 @@ public class SelectSavePath extends JDialog {
      */
     private JTextField pathField;
     /**
+     * 前缀字段
+     */
+    private JTextField preField;
+    /**
      * 包选择按钮
      */
     private JButton packageChooseButton;
@@ -86,6 +87,10 @@ public class SelectSavePath extends JDialog {
      * 禁止提示复选框
      */
     private JCheckBox titleConfig;
+    /**
+     * 分组选择框
+     */
+    private JComboBox<String> groupComboBox;
     /**
      * 所有模板复选框
      */
@@ -202,13 +207,20 @@ public class SelectSavePath extends JDialog {
         // 保存路径使用相对路径
         String basePath = project.getBasePath();
         if (!StringUtils.isEmpty(basePath) && savePath.startsWith(basePath)) {
-            savePath = savePath.replace(basePath, ".");
+            if (savePath.length() > basePath.length()) {
+                if ("/".equals(savePath.substring(basePath.length(), basePath.length() + 1))) {
+                    savePath = savePath.replace(basePath, ".");
+                }
+            } else {
+                savePath = savePath.replace(basePath, ".");
+            }
         }
-
         // 保存配置
         TableInfo tableInfo = tableInfoService.getTableInfoAndConfig(cacheDataUtils.getSelectDbTable());
         tableInfo.setSavePath(savePath);
         tableInfo.setSavePackageName(packageField.getText());
+        tableInfo.setPreName(preField.getText());
+        tableInfo.setTemplateGroupName((String) groupComboBox.getSelectedItem());
         Module module = getSelectModule();
         if (module != null) {
             tableInfo.setSaveModelName(module.getName());
@@ -229,19 +241,36 @@ public class SelectSavePath extends JDialog {
     }
 
     /**
-     * 初始化方法
+     * 初始化模板组
      */
-    private void init() {
+    private void initTemplateGroup() {
         //添加模板组
         checkBoxList.clear();
+        templatePanel.removeAll();
         templatePanel.setLayout(new GridLayout(6, 2));
         templateGroup.getElementList().forEach(template -> {
             JCheckBox checkBox = new JCheckBox(template.getName());
             checkBoxList.add(checkBox);
             templatePanel.add(checkBox);
         });
+        // 移除所有旧事件
+        ActionListener[] actionListeners = allCheckBox.getActionListeners();
+        if (actionListeners != null && actionListeners.length > 0) {
+            for (ActionListener actionListener : actionListeners) {
+                allCheckBox.removeActionListener(actionListener);
+            }
+        }
         //添加全选事件
         allCheckBox.addActionListener(e -> checkBoxList.forEach(jCheckBox -> jCheckBox.setSelected(allCheckBox.isSelected())));
+        allCheckBox.setSelected(false);
+    }
+
+    /**
+     * 初始化方法
+     */
+    private void init() {
+        // 初始化模板组
+        initTemplateGroup();
 
         //初始化Module选择
         for (Module module : this.moduleList) {
@@ -256,38 +285,14 @@ public class SelectSavePath extends JDialog {
 
         //添加包选择事件
         packageChooseButton.addActionListener(e -> {
-            // 这里不知道发生了什么，明明类是存在的但是编译时就是找不到，只用通过反射来使用
-            try {
-                // 构建dialog
-                Class<?> cls = Class.forName("com.intellij.ide.util.PackageChooserDialog");
-                Constructor<?> constructor = cls.getConstructor(String.class, Project.class);
-                Object dialog = constructor.newInstance("Package Chooser", project);
-                // 打开dialog窗口
-                Method show = dialog.getClass().getMethod("show");
-                show.invoke(dialog);
-                // 获取选中的包信息
-                Method getSelectedPackage = dialog.getClass().getMethod("getSelectedPackage");
-                Object psiPackage = getSelectedPackage.invoke(dialog);
-                // 获取名字
-                if (psiPackage != null) {
-                    Method getQualifiedName = psiPackage.getClass().getMethod("getQualifiedName");
-                    String packageName = (String) getQualifiedName.invoke(psiPackage);
-                    packageField.setText(packageName);
-                    // 刷新路径
-                    refreshPath();
-                }
-            } catch (IllegalAccessException | InvocationTargetException | NoSuchMethodException | InstantiationException | ClassNotFoundException e1) {
-                // 抛出异常信息
-                ExceptionUtil.rethrow(e1);
+            PackageChooserDialog dialog = new PackageChooserDialog("Package Chooser", project);
+            dialog.show();
+            PsiPackage psiPackage = dialog.getSelectedPackage();
+            if (psiPackage != null) {
+                packageField.setText(psiPackage.getQualifiedName());
+                // 刷新路径
+                refreshPath();
             }
-//            PackageChooserDialog dialog = new PackageChooserDialog("Package Chooser", project);
-//            dialog.show();
-//            PsiPackage psiPackage = dialog.getSelectedPackage();
-//            if (psiPackage != null) {
-//                packageField.setText(psiPackage.getQualifiedName());
-//                // 刷新路径
-//                refreshPath();
-//            }
         });
 
         // 添加包编辑框失去焦点事件
@@ -305,7 +310,7 @@ public class SelectSavePath extends JDialog {
         //选择路径
         pathChooseButton.addActionListener(e -> {
             //将当前选中的model设置为基础路径
-            VirtualFile path = project.getBaseDir();
+            VirtualFile path = ProjectUtils.getBaseDir(project);
             Module module = getSelectModule();
             if (module != null) {
                 path = ModuleUtils.getSourcePath(module);
@@ -325,6 +330,33 @@ public class SelectSavePath extends JDialog {
         if (!StringUtils.isEmpty(tableInfo.getSavePackageName())) {
             packageField.setText(tableInfo.getSavePackageName());
         }
+        if (!StringUtils.isEmpty(tableInfo.getPreName())) {
+            preField.setText(tableInfo.getPreName());
+        }
+        Settings settings = Settings.getInstance();
+        String groupName = settings.getCurrTemplateGroupName();
+        if (!StringUtils.isEmpty(tableInfo.getTemplateGroupName())) {
+            if (settings.getTemplateGroupMap().containsKey(tableInfo.getTemplateGroupName())) {
+                groupName = tableInfo.getTemplateGroupName();
+                this.templateGroup = settings.getTemplateGroupMap().get(groupName);
+                // 选中的模板组发生变化，尝试重新初始化
+                initTemplateGroup();
+            }
+        }
+        for (String key : settings.getTemplateGroupMap().keySet()) {
+            groupComboBox.addItem(key);
+        }
+        groupComboBox.setSelectedItem(groupName);
+        groupComboBox.addActionListener(e -> {
+            String selectedItem = (String) groupComboBox.getSelectedItem();
+            if (this.templateGroup.getName().equals(selectedItem)) {
+                return;
+            }
+            this.templateGroup = settings.getTemplateGroupMap().get(selectedItem);
+            // 选中的模板组发生变化，尝试重新初始化
+            initTemplateGroup();
+            this.open();
+        });
         String savePath = tableInfo.getSavePath();
         if (!StringUtils.isEmpty(savePath)) {
             // 判断是否需要拼接项目路径
@@ -356,9 +388,17 @@ public class SelectSavePath extends JDialog {
      */
     private String getBasePath() {
         Module module = getSelectModule();
-        String baseDir = project.getBasePath();
+        VirtualFile baseVirtualFile = ProjectUtils.getBaseDir(project);
+        if (baseVirtualFile == null) {
+            Messages.showWarningDialog("无法获取到项目基本路径！", MsgValue.TITLE_INFO);
+            return "";
+        }
+        String baseDir = baseVirtualFile.getPath();
         if (module != null) {
-            baseDir = ModuleUtils.getSourcePath(module).getPath();
+            VirtualFile virtualFile = ModuleUtils.getSourcePath(module);
+            if (virtualFile != null) {
+                baseDir = virtualFile.getPath();
+            }
         }
         return baseDir;
     }

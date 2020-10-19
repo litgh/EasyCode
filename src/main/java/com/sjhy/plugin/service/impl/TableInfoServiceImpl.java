@@ -5,24 +5,27 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.intellij.database.model.DasColumn;
 import com.intellij.database.psi.DbTable;
 import com.intellij.database.util.DasUtil;
+import com.intellij.openapi.editor.Document;
+import com.intellij.openapi.fileEditor.FileDocumentManager;
 import com.intellij.openapi.options.ShowSettingsUtil;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.MessageDialogBuilder;
 import com.intellij.openapi.ui.Messages;
-import com.intellij.openapi.vfs.VirtualFileManager;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.util.ExceptionUtil;
 import com.intellij.util.containers.JBIterable;
 import com.sjhy.plugin.constants.MsgValue;
 import com.sjhy.plugin.entity.ColumnInfo;
+import com.sjhy.plugin.entity.SaveFile;
 import com.sjhy.plugin.entity.TableInfo;
 import com.sjhy.plugin.entity.TypeMapper;
 import com.sjhy.plugin.service.TableInfoService;
 import com.sjhy.plugin.tool.*;
 
-import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 /**
  * @author makejava
@@ -47,11 +50,6 @@ public class TableInfoServiceImpl implements TableInfoService {
      * 文件工具类
      */
     private FileUtils fileUtils;
-
-    /**
-     * 保存的相对路径
-     */
-    private static final String SAVE_PATH = "/.idea/EasyCodeConfig";
 
     public TableInfoServiceImpl(Project project) {
         this.project = project;
@@ -148,6 +146,10 @@ public class TableInfoServiceImpl implements TableInfoService {
         tableInfo.setSavePackageName(tableInfoConfig.getSavePackageName());
         // 选择的保存路径
         tableInfo.setSavePath(tableInfoConfig.getSavePath());
+        // 选择的表名前缀
+        tableInfo.setPreName(tableInfoConfig.getPreName());
+        // 选择的模板组
+        tableInfo.setTemplateGroupName(tableInfoConfig.getTemplateGroupName());
 
         // 没有列时不处理
         if (CollectionUtil.isEmpty(tableInfoConfig.getFullColumn())) {
@@ -241,13 +243,23 @@ public class TableInfoServiceImpl implements TableInfoService {
         JBIterable<? extends DasColumn> columns = DasUtil.getColumns(dbTable);
         List<TypeMapper> typeMapperList = CurrGroupUtils.getCurrTypeMapperGroup().getElementList();
 
+        // 简单的记录报错弹窗次数，避免重复报错
+        Set<String> errorCount = new HashSet<>();
+
         FLAG:
         for (DasColumn column : columns) {
             String typeName = column.getDataType().getSpecification();
             for (TypeMapper typeMapper : typeMapperList) {
-                // 不区分大小写查找类型
-                if (Pattern.compile(typeMapper.getColumnType(), Pattern.CASE_INSENSITIVE).matcher(typeName).matches()) {
-                    continue FLAG;
+                try {
+                    // 不区分大小写查找类型
+                    if (Pattern.compile(typeMapper.getColumnType(), Pattern.CASE_INSENSITIVE).matcher(typeName).matches()) {
+                        continue FLAG;
+                    }
+                } catch (PatternSyntaxException e) {
+                    if (!errorCount.contains(typeMapper.getColumnType())) {
+                        Messages.showWarningDialog("类型映射《" + typeMapper.getColumnType() + "》存在语法错误，请及时修正。报错信息:" + e.getMessage(), MsgValue.TITLE_INFO);
+                        errorCount.add(typeMapper.getColumnType());
+                    }
                 }
             }
             // 没找到类型，引导用户去添加类型
@@ -324,20 +336,12 @@ public class TableInfoServiceImpl implements TableInfoService {
             return;
         }
         // 获取或创建保存目录
-        String path = project.getBasePath() + SAVE_PATH;
-        File dir = new File(path);
-        if (!dir.exists()) {
-            if (!dir.mkdirs()) {
-                Messages.showWarningDialog("保存失败，无法创建目录。", MsgValue.TITLE_INFO);
-                return;
-            }
+        VirtualFile dir = getEasyCodeConfigDirectory(project);
+        if (dir == null) {
+            return;
         }
         // 获取保存文件
-        File file = new File(dir, getConfigFileName(oldTableInfo.getObj()));
-        //写入配置文件
-        fileUtils.write(file, content);
-        // 同步刷新
-        VirtualFileManager.getInstance().syncRefresh();
+        new SaveFile(project, dir.getPath(), getConfigFileName(oldTableInfo.getObj()), content, true, false).write();
     }
 
     /**
@@ -348,16 +352,56 @@ public class TableInfoServiceImpl implements TableInfoService {
      */
     private TableInfo read(TableInfo tableInfo) {
         // 获取保存的目录
-        String path = project.getBasePath() + SAVE_PATH;
-        File dir = new File(path);
-        // 获取保存的文件
-        File file = new File(dir, getConfigFileName(tableInfo.getObj()));
-        // 文件不存在时直接保存一份
-        if (!file.exists()) {
+        VirtualFile easyCodeConfigDir = getEasyCodeConfigDirectory(project);
+        if (easyCodeConfigDir == null) {
+            return null;
+        }
+        // 获取配置文件
+        String fileName = getConfigFileName(tableInfo.getObj());
+        VirtualFile configJsonFile = easyCodeConfigDir.findChild(getConfigFileName(tableInfo.getObj()));
+        if (configJsonFile == null) {
+            return null;
+        }
+        Document document = FileDocumentManager.getInstance().getDocument(configJsonFile);
+        if (document == null) {
+            Messages.showInfoMessage(fileName + "转文档对象失败", MsgValue.TITLE_INFO);
             return null;
         }
         // 读取并解析文件
-        return parser(fileUtils.read(file));
+        String json = document.getText();
+        if (StringUtils.isEmpty(json)) {
+            Messages.showInfoMessage(fileName + "配置文件文件为空，请尝试手动删除" + configJsonFile.getPath() + "文件！", MsgValue.TITLE_INFO);
+            return null;
+        }
+        return parser(json, configJsonFile);
+    }
+
+    /**
+     * 获取EasyCodeConfig目录
+     *
+     * @param project 项目
+     * @return EasyCodeConfig目录
+     */
+    private VirtualFile getEasyCodeConfigDirectory(Project project) {
+        VirtualFile baseDir = ProjectUtils.getBaseDir(project);
+        if (baseDir == null) {
+            Messages.showInfoMessage("无法获取项目路径", MsgValue.TITLE_INFO);
+            return null;
+        }
+        // 获取.idea路径
+        VirtualFile ideaDir = baseDir.findChild(".idea");
+        if (ideaDir == null) {
+            Messages.showInfoMessage(".idea路径获取失败", MsgValue.TITLE_INFO);
+            String errorMsg = String.format("baseDir:%s, not found .idea child directory", baseDir.getPath());
+            ExceptionUtil.rethrow(new IllegalStateException(errorMsg));
+            return null;
+        }
+        // 查找或创建EasyCodeConfig路径
+        VirtualFile easyCodeDir = ideaDir.findChild("EasyCodeConfig");
+        if (easyCodeDir == null) {
+            easyCodeDir = fileUtils.createChildDirectory(project, ideaDir, "EasyCodeConfig");
+        }
+        return easyCodeDir;
     }
 
     /**
@@ -377,11 +421,11 @@ public class TableInfoServiceImpl implements TableInfoService {
      * @param str 原始JSON字符串
      * @return 解析结果
      */
-    private TableInfo parser(String str) {
+    private TableInfo parser(String str, VirtualFile originalFile) {
         try {
             return objectMapper.readValue(str, TableInfo.class);
         } catch (IOException e) {
-            Messages.showWarningDialog("读取配置失败，JSON反序列化异常。", MsgValue.TITLE_INFO);
+            Messages.showWarningDialog("读取配置失败，JSON反序列化异常。请尝试手动删除" + originalFile.getPath() + "文件！", MsgValue.TITLE_INFO);
             ExceptionUtil.rethrow(e);
         }
         return null;

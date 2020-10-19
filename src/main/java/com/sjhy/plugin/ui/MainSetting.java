@@ -45,10 +45,6 @@ public class MainSetting implements Configurable, Configurable.Composite {
      */
     private JPanel mainPanel;
     /**
-     * 编码选择下拉框
-     */
-    private JComboBox encodeComboBox;
-    /**
      * 作者编辑框
      */
     private JTextField authorTextField;
@@ -318,7 +314,6 @@ public class MainSetting implements Configurable, Configurable.Composite {
         //初始化数据
         versionLabel.setText(settings.getVersion());
         authorTextField.setText(settings.getAuthor());
-        encodeComboBox.setSelectedItem(settings.getEncode());
         configServerTextField.setText(HttpUtils.HOST_URL);
     }
 
@@ -331,6 +326,17 @@ public class MainSetting implements Configurable, Configurable.Composite {
     @Override
     public String getDisplayName() {
         return "Easy Code";
+    }
+
+    /**
+     * Returns the topic in the help file which is shown when help for the configurable is requested.
+     *
+     * @return the help topic, or {@code null} if no help is available
+     */
+    @Nullable
+    @Override
+    public String getHelpTopic() {
+        return getDisplayName();
     }
 
     /**
@@ -382,7 +388,7 @@ public class MainSetting implements Configurable, Configurable.Composite {
      */
     @Override
     public boolean isModified() {
-        return !settings.getEncode().equals(encodeComboBox.getSelectedItem()) || !settings.getAuthor().equals(authorTextField.getText())
+        return !settings.getAuthor().equals(authorTextField.getText())
                 || !HttpUtils.HOST_URL.equals(configServerTextField.getText());
     }
 
@@ -393,7 +399,6 @@ public class MainSetting implements Configurable, Configurable.Composite {
     public void apply() {
         //保存数据
         settings.setAuthor(authorTextField.getText());
-        settings.setEncode((String) encodeComboBox.getSelectedItem());
         HttpUtils.HOST_URL = configServerTextField.getText();
     }
 

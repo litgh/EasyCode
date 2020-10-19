@@ -3,6 +3,7 @@ package com.sjhy.plugin.tool;
 import com.intellij.openapi.module.Module;
 import com.intellij.openapi.module.ModuleUtil;
 import com.intellij.openapi.roots.ModuleRootManager;
+import com.intellij.openapi.vfs.VfsUtil;
 import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.openapi.vfs.VirtualFileManager;
 import org.jetbrains.annotations.NotNull;
@@ -26,6 +27,26 @@ public final class ModuleUtils {
     }
 
     /**
+     * 获取module路径
+     *
+     * @param module 模块
+     * @return 路径
+     */
+    public static VirtualFile getModuleDir(@NotNull Module module) {
+        String modulePath = ModuleUtil.getModuleDirPath(module);
+        // 统一路径分割符号
+        modulePath = modulePath.replace("\\", "/");
+        // 尝试消除不正确的路径
+        if (modulePath.contains(".idea/modules/")) {
+            modulePath = modulePath.replace(".idea/modules/","");
+        }
+        if (modulePath.contains("/.idea")) {
+            modulePath = modulePath.replace("/.idea","");
+        }
+        return VirtualFileManager.getInstance().findFileByUrl(String.format("file://%s", modulePath));
+    }
+
+    /**
      * 获取模块的源代码文件夹，不存在
      *
      * @param module 模块对象
@@ -34,7 +55,13 @@ public final class ModuleUtils {
     public static VirtualFile getSourcePath(@NotNull Module module) {
         List<VirtualFile> virtualFileList = ModuleRootManager.getInstance(module).getSourceRoots(JavaSourceRootType.SOURCE);
         if (CollectionUtil.isEmpty(virtualFileList)) {
-            return VirtualFileManager.getInstance().findFileByUrl(String.format("file://%s", ModuleUtil.getModuleDirPath(module)));
+            VirtualFile modulePath = getModuleDir(module);
+            // 尝试智能识别原代码路径(通过上面的方式，IDEA不能百分百拿到原代码路径)
+            VirtualFile srcDir = VfsUtil.findRelativeFile(modulePath, "src", "main", "java");
+            if (srcDir != null && srcDir.isDirectory()) {
+                return srcDir;
+            }
+            return modulePath;
         }
         return virtualFileList.get(0);
     }
